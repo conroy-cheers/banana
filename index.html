@@ -1,0 +1,1214 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Banana Rain</title>
+  <style>
+    :root {
+      --bg-top: #06112b;
+      --bg-mid: #081736;
+      --bg-bottom: #0a1f45;
+      --grain: rgba(255, 255, 255, 0.035);
+    }
+
+    html,
+    body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: linear-gradient(180deg, var(--bg-top) 0%, var(--bg-mid) 50%, var(--bg-bottom) 100%);
+      font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+      touch-action: none;
+      user-select: none;
+    }
+
+    canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      background-image:
+        radial-gradient(circle at 20% 30%, var(--grain) 0, transparent 45%),
+        radial-gradient(circle at 70% 70%, rgba(255, 255, 255, 0.06) 0, transparent 50%);
+      background-size: 380px 380px, 520px 520px;
+    }
+
+    #overlay {
+      pointer-events: none;
+      background: transparent;
+    }
+
+    .hud {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      color: rgba(40, 33, 14, 0.7);
+      font-size: 12px;
+      letter-spacing: 0.02em;
+      padding: 6px 9px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.55);
+      backdrop-filter: blur(3px);
+      pointer-events: none;
+      white-space: nowrap;
+    }
+
+    .metrics {
+      position: fixed;
+      left: 12px;
+      bottom: 12px;
+      color: rgba(34, 28, 11, 0.82);
+      font-size: 11px;
+      line-height: 1.35;
+      letter-spacing: 0.01em;
+      padding: 7px 9px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.58);
+      backdrop-filter: blur(3px);
+      pointer-events: none;
+      white-space: pre;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .panel {
+      position: fixed;
+      top: 12px;
+      right: 12px;
+      width: min(320px, calc(100vw - 24px));
+      color: rgba(35, 25, 10, 0.88);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.62);
+      backdrop-filter: blur(4px);
+      border: 1px solid rgba(120, 104, 59, 0.2);
+      box-shadow: 0 10px 28px rgba(84, 70, 26, 0.15);
+      overflow: hidden;
+    }
+
+    .panel > summary {
+      cursor: pointer;
+      list-style: none;
+      padding: 10px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      background: rgba(255, 255, 255, 0.36);
+    }
+
+    .panel > summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .panel-body {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 9px;
+      padding: 10px 12px 12px;
+    }
+
+    .ctrl {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 4px 8px;
+      align-items: center;
+      font-size: 11px;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    .ctrl input[type="range"] {
+      grid-column: 1 / -1;
+      width: 100%;
+      margin: 0;
+      accent-color: #d6a718;
+    }
+
+    .ctrl input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      margin: 0;
+      accent-color: #2f2815;
+    }
+
+    .ctrl output {
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      color: rgba(65, 48, 12, 0.86);
+    }
+
+    .panel button {
+      border: 0;
+      border-radius: 8px;
+      background: #2f2815;
+      color: #fff8db;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 8px 10px;
+      cursor: pointer;
+    }
+
+    @media (max-width: 640px) {
+      .panel {
+        top: auto;
+        bottom: 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="sim"></canvas>
+  <canvas id="overlay"></canvas>
+  <div class="hud" id="hud">0 bananas</div>
+  <div class="metrics" id="metrics">fps 0
+frame 0.0ms
+sim 0.0ms
+render 0.0ms
+steps 0.0
+particles 0</div>
+  <details class="panel">
+    <summary>Tuning</summary>
+    <div class="panel-body">
+      <label class="ctrl">Gravity <output id="v-gravity"></output>
+        <input id="c-gravity" type="range" min="800" max="3200" step="20" />
+      </label>
+      <label class="ctrl">Bounciness <output id="v-restitution"></output>
+        <input id="c-restitution" type="range" min="0.02" max="0.4" step="0.01" />
+      </label>
+      <label class="ctrl">Floor Friction <output id="v-friction"></output>
+        <input id="c-friction" type="range" min="0.75" max="0.995" step="0.005" />
+      </label>
+      <label class="ctrl">Collision Passes <output id="v-collisions"></output>
+        <input id="c-collisions" type="range" min="1" max="4" step="1" />
+      </label>
+      <label class="ctrl">Spawn Rate <output id="v-spawn"></output>
+        <input id="c-spawn" type="range" min="30" max="260" step="1" />
+      </label>
+      <label class="ctrl">Mouse Radius <output id="v-mouse-radius"></output>
+        <input id="c-mouse-radius" type="range" min="70" max="240" step="1" />
+      </label>
+      <label class="ctrl">Mouse Push <output id="v-mouse-push"></output>
+        <input id="c-mouse-push" type="range" min="30" max="280" step="1" />
+      </label>
+      <label class="ctrl">Pile Density <output id="v-density"></output>
+        <input id="c-density" type="range" min="5.2" max="10.5" step="0.1" />
+      </label>
+      <label class="ctrl">AO Intensity <output id="v-ao-intensity"></output>
+        <input id="c-ao-intensity" type="range" min="0" max="3" step="0.01" />
+      </label>
+      <label class="ctrl">AO Spread <output id="v-ao-spread"></output>
+        <input id="c-ao-spread" type="range" min="1" max="14" step="0.1" />
+      </label>
+      <label class="ctrl">AO Min Light <output id="v-ao-min"></output>
+        <input id="c-ao-min" type="range" min="0.2" max="1" step="0.01" />
+      </label>
+      <label class="ctrl">Show Performance Overlays
+        <input id="c-show-perf" type="checkbox" />
+      </label>
+      <label class="ctrl">Show Fluid Grid
+        <input id="c-show-fluid" type="checkbox" />
+      </label>
+      <label class="ctrl">Show Sleep/Awake
+        <input id="c-show-sleep" type="checkbox" />
+      </label>
+      <button id="reset-btn" type="button">Reset Pile</button>
+    </div>
+  </details>
+
+  <script src="./src/sim/browser-global.js"></script>
+  <script>
+    (() => {
+      const { BananaPileEngine, summarizePileMetrics } = window.BananaSim;
+      const canvas = document.getElementById("sim");
+      const overlayCanvas = document.getElementById("overlay");
+      const gl = canvas.getContext("webgl2", {
+        alpha: false,
+        desynchronized: true,
+        antialias: false,
+        powerPreference: "high-performance",
+      });
+      if (!gl) {
+        throw new Error("WebGL2 is required for instanced banana rendering.");
+      }
+      const overlayCtx = overlayCanvas.getContext("2d", {
+        alpha: true,
+        desynchronized: true,
+      });
+
+      const hud = document.getElementById("hud");
+      const metricsEl = document.getElementById("metrics");
+      const controls = {
+        gravity: document.getElementById("c-gravity"),
+        restitution: document.getElementById("c-restitution"),
+        friction: document.getElementById("c-friction"),
+        collisions: document.getElementById("c-collisions"),
+        spawn: document.getElementById("c-spawn"),
+        mouseRadius: document.getElementById("c-mouse-radius"),
+        mousePush: document.getElementById("c-mouse-push"),
+        density: document.getElementById("c-density"),
+        aoIntensity: document.getElementById("c-ao-intensity"),
+        aoSpread: document.getElementById("c-ao-spread"),
+        aoMin: document.getElementById("c-ao-min"),
+        showPerf: document.getElementById("c-show-perf"),
+        showFluid: document.getElementById("c-show-fluid"),
+        showSleep: document.getElementById("c-show-sleep"),
+        reset: document.getElementById("reset-btn"),
+      };
+
+      const outputs = {
+        gravity: document.getElementById("v-gravity"),
+        restitution: document.getElementById("v-restitution"),
+        friction: document.getElementById("v-friction"),
+        collisions: document.getElementById("v-collisions"),
+        spawn: document.getElementById("v-spawn"),
+        mouseRadius: document.getElementById("v-mouse-radius"),
+        mousePush: document.getElementById("v-mouse-push"),
+        density: document.getElementById("v-density"),
+        aoIntensity: document.getElementById("v-ao-intensity"),
+        aoSpread: document.getElementById("v-ao-spread"),
+        aoMin: document.getElementById("v-ao-min"),
+      };
+
+      const DPR_CAP = 1.5;
+      const MAX_STEPS = 3;
+
+      let dpr = 1;
+      let width = 1;
+      let height = 1;
+      let showPerfOverlay = false;
+      let showFluidOverlay = false;
+      let showSleepOverlay = false;
+
+      const engine = new BananaPileEngine({
+        width: window.innerWidth,
+        height: window.innerHeight,
+        seed: 1337,
+      });
+      const PLANE_COUNT = engine.planeCount;
+      const PLANE_SHADE_STEP = 0.1 / Math.max(1, PLANE_COUNT - 1);
+      const PLANE_Z_STEP = 72 / Math.max(1, PLANE_COUNT - 1);
+
+      const bananaMesh = createBananaMesh();
+      const renderer = createInstancedRenderer(gl, bananaMesh, engine.maxParticles);
+
+      function createBananaMesh(ringCount = 14, sideCount = 10) {
+        const length = 98;
+        const halfLength = length * 0.5;
+        const curve = 20;
+        const radiusBase = 13;
+        const positions = [];
+        const normals = [];
+        const uvs = [];
+        const indices = [];
+
+        for (let i = 0; i <= ringCount; i++) {
+          const t = i / ringCount;
+          const x = (t - 0.5) * length;
+          const q = x / halfLength;
+          const y = -curve * (1 - q * q);
+          const dydx = (2 * curve * x) / (halfLength * halfLength);
+
+          let tx = 1;
+          let ty = dydx;
+          let tz = 0;
+          let tlen = Math.hypot(tx, ty, tz);
+          tx /= tlen;
+          ty /= tlen;
+
+          let nxBase = -ty;
+          let nyBase = tx;
+          let nzBase = 0;
+
+          const tip = Math.min(t, 1 - t) * 2;
+          const radius = radiusBase * (0.24 + 0.76 * Math.pow(tip, 0.7));
+
+          for (let s = 0; s <= sideCount; s++) {
+            const a = (s / sideCount) * Math.PI * 2;
+            const ca = Math.cos(a);
+            const sa = Math.sin(a);
+            const nx = nxBase * ca;
+            const ny = nyBase * ca;
+            const nz = sa;
+            const px = x + nx * radius;
+            const py = y + ny * radius;
+            const pz = nz * radius * 0.72;
+            positions.push(px, py, pz);
+            normals.push(nx, ny, nz);
+            uvs.push(t, s / sideCount);
+          }
+        }
+
+        const ringStride = sideCount + 1;
+        for (let i = 0; i < ringCount; i++) {
+          for (let s = 0; s < sideCount; s++) {
+            const a = i * ringStride + s;
+            const b = a + 1;
+            const c = a + ringStride;
+            const d = c + 1;
+            indices.push(a, c, b);
+            indices.push(b, c, d);
+          }
+        }
+
+        return {
+          positions: new Float32Array(positions),
+          normals: new Float32Array(normals),
+          uvs: new Float32Array(uvs),
+          indices: new Uint16Array(indices),
+        };
+      }
+
+      function createInstancedRenderer(glctx, mesh, maxInstances) {
+        const depthVertSrc = `#version 300 es
+          precision highp float;
+          layout(location = 0) in vec3 aPos;
+          layout(location = 3) in vec2 iCenter;
+          layout(location = 4) in float iScale;
+          layout(location = 5) in vec2 iDir;
+          layout(location = 6) in float iDepth;
+          layout(location = 8) in float iPlane;
+          layout(location = 9) in vec2 iAxial;
+
+          uniform vec2 uResolution;
+          uniform float uCameraZ;
+          uniform float uPlaneStep;
+
+          void main() {
+            mat2 rot = mat2(iDir.x, -iDir.y, iDir.y, iDir.x);
+            float localX = aPos.x * iScale;
+            float localY = aPos.y * iScale;
+            float localZ = aPos.z * iScale;
+            float rollY = localY * iAxial.x - localZ * iAxial.y;
+            float rollZ = localY * iAxial.y + localZ * iAxial.x;
+            vec2 localXY = rot * vec2(localX, rollY);
+
+            vec3 world = vec3(
+              iCenter.x - uResolution.x * 0.5 + localXY.x,
+              -(iCenter.y - uResolution.y * 0.5) + localXY.y,
+              iDepth + iPlane * uPlaneStep + rollZ
+            );
+
+            float invDist = 1.0 / max(1.0, uCameraZ - world.z);
+            float persp = uCameraZ * invDist;
+            float ndcX = (world.x * persp) / (uResolution.x * 0.5);
+            float ndcY = (world.y * persp) / (uResolution.y * 0.5);
+            float ndcZ = clamp(((uCameraZ - world.z) / uCameraZ) * 2.0 - 1.0, -1.0, 1.0);
+            gl_Position = vec4(ndcX, ndcY, ndcZ, 1.0);
+          }
+        `;
+
+        const depthFragSrc = `#version 300 es
+          precision mediump float;
+          void main() {}
+        `;
+
+        const colorVertSrc = `#version 300 es
+          precision highp float;
+          layout(location = 0) in vec3 aPos;
+          layout(location = 1) in vec3 aNormal;
+          layout(location = 2) in vec2 aUv;
+          layout(location = 3) in vec2 iCenter;
+          layout(location = 4) in float iScale;
+          layout(location = 5) in vec2 iDir;
+          layout(location = 6) in float iDepth;
+          layout(location = 7) in float iShade;
+          layout(location = 8) in float iPlane;
+          layout(location = 9) in vec2 iAxial;
+
+          uniform vec2 uResolution;
+          uniform float uCameraZ;
+          uniform float uPlaneStep;
+
+          out vec3 vNormal;
+          out vec2 vUv;
+          out float vShade;
+          out float vPlane;
+
+          void main() {
+            mat2 rot = mat2(iDir.x, -iDir.y, iDir.y, iDir.x);
+            float localX = aPos.x * iScale;
+            float localY = aPos.y * iScale;
+            float localZ = aPos.z * iScale;
+            float rollY = localY * iAxial.x - localZ * iAxial.y;
+            float rollZ = localY * iAxial.y + localZ * iAxial.x;
+            vec2 localXY = rot * vec2(localX, rollY);
+
+            vec3 world = vec3(
+              iCenter.x - uResolution.x * 0.5 + localXY.x,
+              -(iCenter.y - uResolution.y * 0.5) + localXY.y,
+              iDepth + iPlane * uPlaneStep + rollZ
+            );
+
+            float nRollY = aNormal.y * iAxial.x - aNormal.z * iAxial.y;
+            float nRollZ = aNormal.y * iAxial.y + aNormal.z * iAxial.x;
+            vec3 n = normalize(vec3(rot * vec2(aNormal.x, nRollY), nRollZ));
+            vNormal = n;
+            vUv = aUv;
+            vShade = iShade;
+            vPlane = iPlane;
+
+            float invDist = 1.0 / max(1.0, uCameraZ - world.z);
+            float persp = uCameraZ * invDist;
+            float ndcX = (world.x * persp) / (uResolution.x * 0.5);
+            float ndcY = (world.y * persp) / (uResolution.y * 0.5);
+            float ndcZ = clamp(((uCameraZ - world.z) / uCameraZ) * 2.0 - 1.0, -1.0, 1.0);
+            gl_Position = vec4(ndcX, ndcY, ndcZ, 1.0);
+          }
+        `;
+
+        const colorFragSrc = `#version 300 es
+          precision highp float;
+          in vec3 vNormal;
+          in vec2 vUv;
+          in float vShade;
+          in float vPlane;
+
+          uniform sampler2D uDepthTex;
+          uniform vec2 uTexelSize;
+          uniform vec2 uScreenInvSize;
+          uniform float uAOIntensity;
+          uniform float uAOSpread;
+          uniform float uAOMinLight;
+
+          out vec4 outColor;
+
+          void main() {
+            vec3 N = normalize(vNormal);
+            vec3 L = normalize(vec3(0.06, 0.22, 0.97));
+            vec3 V = normalize(vec3(0.0, 0.0, 1.0));
+            float diff = max(dot(N, L), 0.0);
+            float rim = pow(1.0 - max(dot(N, V), 0.0), 2.1) * 0.10;
+            float spec = pow(max(dot(reflect(-L, N), V), 0.0), 24.0) * 0.2;
+
+            float stemTip = 1.0 - smoothstep(0.0, 0.16, vUv.x);
+            float blossomTip = smoothstep(0.90, 1.0, vUv.x);
+
+            vec3 base = mix(vec3(1.00, 0.88, 0.10), vec3(0.99, 0.94, 0.30), vUv.y);
+            base = mix(base, vec3(0.36, 0.23, 0.07), stemTip * 0.94);
+            base = mix(base, vec3(0.58, 0.43, 0.14), blossomTip * 0.22);
+            base *= mix(0.82, 1.18, clamp(vShade - 0.7, 0.0, 1.0));
+            base *= (0.95 + vPlane * 0.03);
+
+            float light = 0.54 + diff * 0.54 + rim + spec;
+            vec3 color = base * light;
+
+            vec2 uv = clamp(gl_FragCoord.xy * uScreenInvSize, vec2(0.002), vec2(0.998));
+            vec2 stepUv = uTexelSize * max(1.0, uAOSpread);
+            float currentDepth = texture(uDepthTex, uv).r;
+            float s1 = texture(uDepthTex, uv + vec2(stepUv.x, 0.0)).r;
+            float s2 = texture(uDepthTex, uv + vec2(0.0, stepUv.y)).r;
+            float s3 = texture(uDepthTex, uv + vec2(stepUv.x * 1.7, stepUv.y * 1.7)).r;
+            float occ = 0.0;
+            occ += smoothstep(0.0002, 0.070, currentDepth - s1);
+            occ += smoothstep(0.0002, 0.070, currentDepth - s2);
+            occ += smoothstep(0.0001, 0.085, currentDepth - s3) * 0.8;
+            float occNorm = clamp((occ / 2.8) * uAOIntensity, 0.0, 1.0);
+            float occCurve = smoothstep(0.03, 0.97, occNorm);
+            float ao = mix(1.0, uAOMinLight, occCurve);
+            color *= ao;
+
+            outColor = vec4(color, 1.0);
+          }
+        `;
+
+        function compile(type, source) {
+          const shader = glctx.createShader(type);
+          glctx.shaderSource(shader, source);
+          glctx.compileShader(shader);
+          if (!glctx.getShaderParameter(shader, glctx.COMPILE_STATUS)) {
+            const log = glctx.getShaderInfoLog(shader);
+            glctx.deleteShader(shader);
+            throw new Error(`Shader compile failed: ${log}`);
+          }
+          return shader;
+        }
+
+        const depthVert = compile(glctx.VERTEX_SHADER, depthVertSrc);
+        const depthFrag = compile(glctx.FRAGMENT_SHADER, depthFragSrc);
+        const depthProgram = glctx.createProgram();
+        glctx.attachShader(depthProgram, depthVert);
+        glctx.attachShader(depthProgram, depthFrag);
+        glctx.linkProgram(depthProgram);
+        if (!glctx.getProgramParameter(depthProgram, glctx.LINK_STATUS)) {
+          throw new Error(`Depth program link failed: ${glctx.getProgramInfoLog(depthProgram)}`);
+        }
+
+        const colorVert = compile(glctx.VERTEX_SHADER, colorVertSrc);
+        const colorFrag = compile(glctx.FRAGMENT_SHADER, colorFragSrc);
+        const colorProgram = glctx.createProgram();
+        glctx.attachShader(colorProgram, colorVert);
+        glctx.attachShader(colorProgram, colorFrag);
+        glctx.linkProgram(colorProgram);
+        if (!glctx.getProgramParameter(colorProgram, glctx.LINK_STATUS)) {
+          throw new Error(`Color program link failed: ${glctx.getProgramInfoLog(colorProgram)}`);
+        }
+        glctx.deleteShader(depthVert);
+        glctx.deleteShader(depthFrag);
+        glctx.deleteShader(colorVert);
+        glctx.deleteShader(colorFrag);
+
+        const vao = glctx.createVertexArray();
+        glctx.bindVertexArray(vao);
+
+        const vertexCount = mesh.positions.length / 3;
+        const interleaved = new Float32Array(vertexCount * 8);
+        for (let i = 0; i < vertexCount; i++) {
+          const di = i * 8;
+          interleaved[di] = mesh.positions[i * 3];
+          interleaved[di + 1] = mesh.positions[i * 3 + 1];
+          interleaved[di + 2] = mesh.positions[i * 3 + 2];
+          interleaved[di + 3] = mesh.normals[i * 3];
+          interleaved[di + 4] = mesh.normals[i * 3 + 1];
+          interleaved[di + 5] = mesh.normals[i * 3 + 2];
+          interleaved[di + 6] = mesh.uvs[i * 2];
+          interleaved[di + 7] = mesh.uvs[i * 2 + 1];
+        }
+
+        const vertexBuffer = glctx.createBuffer();
+        glctx.bindBuffer(glctx.ARRAY_BUFFER, vertexBuffer);
+        glctx.bufferData(glctx.ARRAY_BUFFER, interleaved, glctx.STATIC_DRAW);
+        const vStride = 8 * 4;
+        glctx.enableVertexAttribArray(0);
+        glctx.vertexAttribPointer(0, 3, glctx.FLOAT, false, vStride, 0);
+        glctx.enableVertexAttribArray(1);
+        glctx.vertexAttribPointer(1, 3, glctx.FLOAT, false, vStride, 12);
+        glctx.enableVertexAttribArray(2);
+        glctx.vertexAttribPointer(2, 2, glctx.FLOAT, false, vStride, 24);
+
+        const indexBuffer = glctx.createBuffer();
+        glctx.bindBuffer(glctx.ELEMENT_ARRAY_BUFFER, indexBuffer);
+        glctx.bufferData(glctx.ELEMENT_ARRAY_BUFFER, mesh.indices, glctx.STATIC_DRAW);
+
+        const floatsPerInstance = 10;
+        const instanceData = new Float32Array(maxInstances * floatsPerInstance);
+        const instanceBuffer = glctx.createBuffer();
+        glctx.bindBuffer(glctx.ARRAY_BUFFER, instanceBuffer);
+        glctx.bufferData(glctx.ARRAY_BUFFER, instanceData.byteLength, glctx.DYNAMIC_DRAW);
+
+        const iStride = floatsPerInstance * 4;
+        glctx.enableVertexAttribArray(3);
+        glctx.vertexAttribPointer(3, 2, glctx.FLOAT, false, iStride, 0);
+        glctx.vertexAttribDivisor(3, 1);
+        glctx.enableVertexAttribArray(4);
+        glctx.vertexAttribPointer(4, 1, glctx.FLOAT, false, iStride, 8);
+        glctx.vertexAttribDivisor(4, 1);
+        glctx.enableVertexAttribArray(5);
+        glctx.vertexAttribPointer(5, 2, glctx.FLOAT, false, iStride, 12);
+        glctx.vertexAttribDivisor(5, 1);
+        glctx.enableVertexAttribArray(6);
+        glctx.vertexAttribPointer(6, 1, glctx.FLOAT, false, iStride, 20);
+        glctx.vertexAttribDivisor(6, 1);
+        glctx.enableVertexAttribArray(7);
+        glctx.vertexAttribPointer(7, 1, glctx.FLOAT, false, iStride, 24);
+        glctx.vertexAttribDivisor(7, 1);
+        glctx.enableVertexAttribArray(8);
+        glctx.vertexAttribPointer(8, 1, glctx.FLOAT, false, iStride, 28);
+        glctx.vertexAttribDivisor(8, 1);
+        glctx.enableVertexAttribArray(9);
+        glctx.vertexAttribPointer(9, 2, glctx.FLOAT, false, iStride, 32);
+        glctx.vertexAttribDivisor(9, 1);
+
+        glctx.bindVertexArray(null);
+
+        const uDepthResolution = glctx.getUniformLocation(depthProgram, "uResolution");
+        const uDepthCameraZ = glctx.getUniformLocation(depthProgram, "uCameraZ");
+        const uDepthPlaneStep = glctx.getUniformLocation(depthProgram, "uPlaneStep");
+        const uColorResolution = glctx.getUniformLocation(colorProgram, "uResolution");
+        const uColorCameraZ = glctx.getUniformLocation(colorProgram, "uCameraZ");
+        const uColorPlaneStep = glctx.getUniformLocation(colorProgram, "uPlaneStep");
+        const uDepthTex = glctx.getUniformLocation(colorProgram, "uDepthTex");
+        const uTexelSize = glctx.getUniformLocation(colorProgram, "uTexelSize");
+        const uScreenInvSize = glctx.getUniformLocation(colorProgram, "uScreenInvSize");
+        const uAOIntensity = glctx.getUniformLocation(colorProgram, "uAOIntensity");
+        const uAOSpread = glctx.getUniformLocation(colorProgram, "uAOSpread");
+        const uAOMinLight = glctx.getUniformLocation(colorProgram, "uAOMinLight");
+
+        const depthFbo = glctx.createFramebuffer();
+        const depthTex = glctx.createTexture();
+        let rtWidth = 1;
+        let rtHeight = 1;
+        const aoResolutionScale = 0.33;
+
+        function resizeDepthTarget(width, height) {
+          rtWidth = Math.max(1, Math.floor(width * aoResolutionScale));
+          rtHeight = Math.max(1, Math.floor(height * aoResolutionScale));
+          glctx.bindTexture(glctx.TEXTURE_2D, depthTex);
+          glctx.texParameteri(glctx.TEXTURE_2D, glctx.TEXTURE_MIN_FILTER, glctx.NEAREST);
+          glctx.texParameteri(glctx.TEXTURE_2D, glctx.TEXTURE_MAG_FILTER, glctx.NEAREST);
+          glctx.texParameteri(glctx.TEXTURE_2D, glctx.TEXTURE_WRAP_S, glctx.CLAMP_TO_EDGE);
+          glctx.texParameteri(glctx.TEXTURE_2D, glctx.TEXTURE_WRAP_T, glctx.CLAMP_TO_EDGE);
+          glctx.texImage2D(
+            glctx.TEXTURE_2D,
+            0,
+            glctx.DEPTH_COMPONENT24,
+            rtWidth,
+            rtHeight,
+            0,
+            glctx.DEPTH_COMPONENT,
+            glctx.UNSIGNED_INT,
+            null
+          );
+          glctx.bindFramebuffer(glctx.FRAMEBUFFER, depthFbo);
+          glctx.framebufferTexture2D(
+            glctx.FRAMEBUFFER,
+            glctx.DEPTH_ATTACHMENT,
+            glctx.TEXTURE_2D,
+            depthTex,
+            0
+          );
+          glctx.drawBuffers([glctx.NONE]);
+          glctx.readBuffer(glctx.NONE);
+          const status = glctx.checkFramebufferStatus(glctx.FRAMEBUFFER);
+          if (status !== glctx.FRAMEBUFFER_COMPLETE) {
+            throw new Error(`Depth framebuffer incomplete: ${status}`);
+          }
+          glctx.bindFramebuffer(glctx.FRAMEBUFFER, null);
+          glctx.bindTexture(glctx.TEXTURE_2D, null);
+        }
+
+        glctx.disable(glctx.BLEND);
+        glctx.disable(glctx.CULL_FACE);
+        glctx.enable(glctx.DEPTH_TEST);
+        glctx.depthFunc(glctx.LEQUAL);
+        glctx.clearColor(0.03, 0.08, 0.2, 1);
+        glctx.clearDepth(1);
+
+        const cameraZ = 1100;
+        let aoIntensity = 2.5;
+        let aoSpread = 7.2;
+        let aoMinLight = 0.7;
+
+        return {
+          resize() {
+            glctx.viewport(0, 0, glctx.canvas.width, glctx.canvas.height);
+            resizeDepthTarget(glctx.canvas.width, glctx.canvas.height);
+          },
+          render(view, sceneWidth, sceneHeight) {
+            const count = view.count;
+            const x = view.x;
+            const y = view.y;
+            const r = view.r;
+            const depth = view.depth;
+            const plane = view.plane;
+            const dirX = view.dirX;
+            const dirY = view.dirY;
+            const axialCos = view.axialCos;
+            const axialSin = view.axialSin;
+            const tint = view.tint;
+            const margin = 120;
+            let n = 0;
+
+            for (let i = 0; i < count; i++) {
+              const xi = x[i];
+              const yi = y[i];
+              if (
+                xi < -margin ||
+                xi > sceneWidth + margin ||
+                yi < -margin ||
+                yi > sceneHeight + margin
+              ) {
+                continue;
+              }
+
+              const p = plane[i];
+              const scale = (r[i] / 28) * (0.9 + depth[i] * 0.18);
+              const shade = tint[i] - depth[i] * 0.12 - (PLANE_COUNT - 1 - p) * PLANE_SHADE_STEP;
+              const base = n * floatsPerInstance;
+              instanceData[base] = xi;
+              instanceData[base + 1] = yi;
+              instanceData[base + 2] = scale;
+              instanceData[base + 3] = dirX[i];
+              instanceData[base + 4] = dirY[i];
+              instanceData[base + 5] = depth[i] * 28;
+              instanceData[base + 6] = Math.max(0.7, Math.min(1.2, shade));
+              instanceData[base + 7] = p;
+              instanceData[base + 8] = axialCos[i];
+              instanceData[base + 9] = axialSin[i];
+              n++;
+            }
+
+            glctx.clear(glctx.COLOR_BUFFER_BIT | glctx.DEPTH_BUFFER_BIT);
+            if (n === 0) return 0;
+
+            glctx.bindBuffer(glctx.ARRAY_BUFFER, instanceBuffer);
+            glctx.bufferSubData(
+              glctx.ARRAY_BUFFER,
+              0,
+              instanceData.subarray(0, n * floatsPerInstance)
+            );
+
+            glctx.bindFramebuffer(glctx.FRAMEBUFFER, depthFbo);
+            glctx.viewport(0, 0, rtWidth, rtHeight);
+            glctx.colorMask(false, false, false, false);
+            glctx.clear(glctx.DEPTH_BUFFER_BIT);
+            glctx.useProgram(depthProgram);
+            glctx.uniform2f(uDepthResolution, sceneWidth, sceneHeight);
+            glctx.uniform1f(uDepthCameraZ, cameraZ);
+            glctx.uniform1f(uDepthPlaneStep, PLANE_Z_STEP);
+            glctx.bindVertexArray(vao);
+            glctx.drawElementsInstanced(
+              glctx.TRIANGLES,
+              mesh.indices.length,
+              glctx.UNSIGNED_SHORT,
+              0,
+              n
+            );
+
+            glctx.bindFramebuffer(glctx.FRAMEBUFFER, null);
+            glctx.viewport(0, 0, glctx.canvas.width, glctx.canvas.height);
+            glctx.colorMask(true, true, true, true);
+            glctx.clear(glctx.COLOR_BUFFER_BIT | glctx.DEPTH_BUFFER_BIT);
+
+            glctx.useProgram(colorProgram);
+            glctx.uniform2f(uColorResolution, sceneWidth, sceneHeight);
+            glctx.uniform1f(uColorCameraZ, cameraZ);
+            glctx.uniform1f(uColorPlaneStep, PLANE_Z_STEP);
+            glctx.uniform2f(uTexelSize, 1 / rtWidth, 1 / rtHeight);
+            glctx.uniform2f(uScreenInvSize, 1 / glctx.canvas.width, 1 / glctx.canvas.height);
+            glctx.uniform1f(uAOIntensity, aoIntensity);
+            glctx.uniform1f(uAOSpread, aoSpread);
+            glctx.uniform1f(uAOMinLight, aoMinLight);
+            glctx.activeTexture(glctx.TEXTURE0);
+            glctx.bindTexture(glctx.TEXTURE_2D, depthTex);
+            glctx.uniform1i(uDepthTex, 0);
+            glctx.bindVertexArray(vao);
+            glctx.drawElementsInstanced(
+              glctx.TRIANGLES,
+              mesh.indices.length,
+              glctx.UNSIGNED_SHORT,
+              0,
+              n
+            );
+            glctx.bindVertexArray(null);
+            return n;
+          },
+          getAOParams() {
+            return {
+              intensity: aoIntensity,
+              spread: aoSpread,
+              minLight: aoMinLight,
+            };
+          },
+          setAOParams(params = {}) {
+            if (params.intensity != null) {
+              aoIntensity = Math.max(0, params.intensity);
+            }
+            if (params.spread != null) {
+              aoSpread = Math.max(0.5, params.spread);
+            }
+            if (params.minLight != null) {
+              aoMinLight = Math.max(0.1, Math.min(1, params.minLight));
+            }
+          },
+        };
+      }
+
+      function resize() {
+        dpr = Math.min(window.devicePixelRatio || 1, DPR_CAP);
+        width = Math.max(1, Math.floor(window.innerWidth));
+        height = Math.max(1, Math.floor(window.innerHeight));
+
+        canvas.width = Math.floor(width * dpr);
+        canvas.height = Math.floor(height * dpr);
+        canvas.style.width = `${width}px`;
+        canvas.style.height = `${height}px`;
+        overlayCanvas.width = canvas.width;
+        overlayCanvas.height = canvas.height;
+        overlayCanvas.style.width = `${width}px`;
+        overlayCanvas.style.height = `${height}px`;
+
+        renderer.resize();
+        engine.resize(width, height);
+      }
+
+      function render() {
+        const view = engine.getRenderState();
+        const renderedCount = renderer.render(view, width, height);
+
+        overlayCtx.setTransform(1, 0, 0, 1, 0, 0);
+        overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+        if (showFluidOverlay) {
+          renderFluidOverlay(view);
+        }
+
+        if (showSleepOverlay) {
+          renderSleepOverlay(view);
+        }
+
+        if (showPerfOverlay) {
+          const sleep = engine.getSleepState();
+          const planeSummary = Array.from(
+            view.planePopulation,
+            (count, idx) => `L${idx}:${count.toLocaleString()}`
+          ).join(" ");
+          hud.textContent =
+            `${view.count.toLocaleString()} bananas / ${view.targetCount.toLocaleString()} target` +
+            ` | ${planeSummary}` +
+            ` | draw ${renderedCount.toLocaleString()}` +
+            ` | sleep ${sleep.sleepingCount.toLocaleString()}`;
+        }
+      }
+
+      function renderFluidOverlay(view) {
+        const cols = view.fluidCols;
+        const rows = view.fluidRows;
+        const size = view.fluidCellSize;
+        const threshold = Math.max(0.0001, view.fluidThreshold);
+        const fluidMask = view.fluidMask;
+        const boundaryMask = view.boundaryMask;
+        const occ = view.fluidOcc;
+
+        overlayCtx.save();
+        overlayCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        overlayCtx.globalCompositeOperation = "source-over";
+
+        for (let cy = 0; cy < rows; cy++) {
+          for (let cx = 0; cx < cols; cx++) {
+            const idx = cy * cols + cx;
+            const isFluid = fluidMask[idx] === 1;
+            const isBoundary = boundaryMask[idx] === 1;
+            if (!isFluid && !isBoundary) continue;
+
+            const x0 = (cx - 1) * size;
+            const y0 = (cy - 2) * size;
+            if (x0 > width || y0 > height || x0 + size < 0 || y0 + size < 0) continue;
+
+            if (isBoundary) {
+              overlayCtx.fillStyle = "rgba(247, 170, 59, 0.18)";
+              overlayCtx.fillRect(x0, y0, size, size);
+              overlayCtx.strokeStyle = "rgba(204, 120, 18, 0.42)";
+              overlayCtx.lineWidth = 1;
+              overlayCtx.strokeRect(x0 + 0.5, y0 + 0.5, size - 1, size - 1);
+            } else {
+              const intensity = Math.min(1, occ[idx] / threshold);
+              overlayCtx.fillStyle = `rgba(52, 138, 255, ${0.08 + intensity * 0.19})`;
+              overlayCtx.fillRect(x0, y0, size, size);
+            }
+          }
+        }
+
+        overlayCtx.restore();
+      }
+
+      function renderSleepOverlay(view) {
+        const n = view.count;
+        const x = view.x;
+        const y = view.y;
+        const sleeping = view.sleeping;
+        const region = view.region;
+
+        overlayCtx.save();
+        overlayCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        overlayCtx.globalCompositeOperation = "source-over";
+
+        overlayCtx.fillStyle = "rgba(64, 216, 112, 0.85)";
+        for (let i = 0; i < n; i++) {
+          if (sleeping[i] === 1) {
+            overlayCtx.fillRect(x[i] - 1.2, y[i] - 1.2, 2.4, 2.4);
+          }
+        }
+
+        overlayCtx.fillStyle = "rgba(255, 197, 74, 0.9)";
+        for (let i = 0; i < n; i++) {
+          if (sleeping[i] === 0 && region[i] === 1) {
+            overlayCtx.fillRect(x[i] - 1.1, y[i] - 1.1, 2.2, 2.2);
+          }
+        }
+
+        overlayCtx.fillStyle = "rgba(80, 191, 255, 0.85)";
+        for (let i = 0; i < n; i++) {
+          if (sleeping[i] === 0 && region[i] === 0) {
+            overlayCtx.fillRect(x[i] - 1, y[i] - 1, 2, 2);
+          }
+        }
+
+        overlayCtx.fillStyle = "rgba(255, 70, 88, 0.9)";
+        for (let i = 0; i < n; i++) {
+          if (sleeping[i] === 0 && region[i] === 2) {
+            overlayCtx.fillRect(x[i] - 1.3, y[i] - 1.3, 2.6, 2.6);
+          }
+        }
+
+        overlayCtx.restore();
+      }
+
+      let accumulator = 0;
+      let lastTime = 0;
+      let perfWindowStart = 0;
+      let perfFrames = 0;
+      let perfFrameMsAcc = 0;
+      let perfSimMsAcc = 0;
+      let perfRenderMsAcc = 0;
+      let perfStepsAcc = 0;
+
+      function applyPerformanceOverlayVisibility() {
+        const visible = showPerfOverlay;
+        hud.style.display = visible ? "block" : "none";
+        metricsEl.style.display = visible ? "block" : "none";
+      }
+
+      function updateMetrics(now, frameMs, simMs, renderMs, steps) {
+        if (!perfWindowStart) perfWindowStart = now;
+
+        perfFrames++;
+        perfFrameMsAcc += frameMs;
+        perfSimMsAcc += simMs;
+        perfRenderMsAcc += renderMs;
+        perfStepsAcc += steps;
+
+        const elapsed = now - perfWindowStart;
+        if (elapsed < 300) return;
+        if (!showPerfOverlay) {
+          perfWindowStart = now;
+          perfFrames = 0;
+          perfFrameMsAcc = 0;
+          perfSimMsAcc = 0;
+          perfRenderMsAcc = 0;
+          perfStepsAcc = 0;
+          return;
+        }
+
+        const fps = (perfFrames * 1000) / Math.max(1, elapsed);
+        const avgFrame = perfFrameMsAcc / perfFrames;
+        const avgSim = perfSimMsAcc / perfFrames;
+        const avgRender = perfRenderMsAcc / perfFrames;
+        const avgSteps = perfStepsAcc / perfFrames;
+
+        const summary = summarizePileMetrics(engine, { maxSamples: 5000 });
+        const interiorSleepRatio =
+          summary.sleep.interiorCount > 0
+            ? summary.sleep.interiorSleepingCount / summary.sleep.interiorCount
+            : 0;
+
+        metricsEl.textContent =
+          `fps ${fps.toFixed(1)}\n` +
+          `frame ${avgFrame.toFixed(2)}ms\n` +
+          `sim ${avgSim.toFixed(2)}ms\n` +
+          `render ${avgRender.toFixed(2)}ms\n` +
+          `steps ${avgSteps.toFixed(2)}\n` +
+          `particles ${engine.particleCount.toLocaleString()}\n` +
+          `sleep ${summary.sleep.sleepingCount.toLocaleString()} (${(interiorSleepRatio * 100).toFixed(1)}% interior)\n` +
+          `jostle int rms ${summary.jostling.interiorRmsSpeed.toFixed(4)} p95 ${summary.jostling.interiorP95Speed.toFixed(4)}\n` +
+          `compress p95 ${summary.compression.p95Compression.toFixed(3)} max ${summary.compression.maxCompression.toFixed(3)}`;
+
+        perfWindowStart = now;
+        perfFrames = 0;
+        perfFrameMsAcc = 0;
+        perfSimMsAcc = 0;
+        perfRenderMsAcc = 0;
+        perfStepsAcc = 0;
+      }
+
+      function frame(t) {
+        const frameStart = performance.now();
+        if (!lastTime) lastTime = t;
+
+        let dt = (t - lastTime) / 1000;
+        lastTime = t;
+        if (dt > 0.05) dt = 0.05;
+
+        accumulator += dt;
+
+        const simStart = performance.now();
+        let steps = 0;
+        while (accumulator >= engine.fixedDt && steps < MAX_STEPS) {
+          engine.step(engine.fixedDt);
+          accumulator -= engine.fixedDt;
+          steps++;
+        }
+        const simMs = performance.now() - simStart;
+
+        const renderStart = performance.now();
+        render();
+        const renderMs = performance.now() - renderStart;
+
+        const frameEnd = performance.now();
+        updateMetrics(frameEnd, frameEnd - frameStart, simMs, renderMs, steps);
+        requestAnimationFrame(frame);
+      }
+
+      function setOut(el, value) {
+        el.textContent = value;
+      }
+
+      function bindRange(input, onInput) {
+        input.addEventListener("input", () => {
+          onInput(Number(input.value));
+        });
+      }
+
+      function syncControls() {
+        const tuning = engine.getTuning();
+        const ao = renderer.getAOParams();
+
+        controls.gravity.value = String(tuning.gravity);
+        controls.restitution.value = String(tuning.restitution);
+        controls.friction.value = String(tuning.floorFriction);
+        controls.collisions.value = String(tuning.collisionPasses);
+        controls.spawn.value = String(tuning.spawnRateMax);
+        controls.mouseRadius.value = String(tuning.mouseRadius);
+        controls.mousePush.value = String(tuning.mousePush);
+        controls.density.value = String(tuning.densityFactor);
+        controls.aoIntensity.value = String(ao.intensity);
+        controls.aoSpread.value = String(ao.spread);
+        controls.aoMin.value = String(ao.minLight);
+        controls.showPerf.checked = showPerfOverlay;
+        controls.showFluid.checked = showFluidOverlay;
+        controls.showSleep.checked = showSleepOverlay;
+
+        setOut(outputs.gravity, String(Math.round(tuning.gravity)));
+        setOut(outputs.restitution, tuning.restitution.toFixed(2));
+        setOut(outputs.friction, tuning.floorFriction.toFixed(3));
+        setOut(outputs.collisions, String(tuning.collisionPasses));
+        setOut(outputs.spawn, String(Math.round(tuning.spawnRateMax)));
+        setOut(outputs.mouseRadius, String(Math.round(tuning.mouseRadius)));
+        setOut(outputs.mousePush, String(Math.round(tuning.mousePush)));
+        setOut(outputs.density, tuning.densityFactor.toFixed(1));
+        setOut(outputs.aoIntensity, ao.intensity.toFixed(2));
+        setOut(outputs.aoSpread, ao.spread.toFixed(1));
+        setOut(outputs.aoMin, ao.minLight.toFixed(2));
+      }
+
+      function clearPile() {
+        engine.resetPile();
+        accumulator = 0;
+        perfWindowStart = 0;
+        perfFrames = 0;
+        perfFrameMsAcc = 0;
+        perfSimMsAcc = 0;
+        perfRenderMsAcc = 0;
+        perfStepsAcc = 0;
+        metricsEl.textContent =
+          "fps 0\nframe 0.0ms\nsim 0.0ms\nrender 0.0ms\nsteps 0.0\nparticles 0";
+      }
+
+      bindRange(controls.gravity, (value) => {
+        engine.setTuning({ gravity: value });
+        setOut(outputs.gravity, String(Math.round(value)));
+      });
+
+      bindRange(controls.restitution, (value) => {
+        engine.setTuning({ restitution: value });
+        setOut(outputs.restitution, value.toFixed(2));
+      });
+
+      bindRange(controls.friction, (value) => {
+        engine.setTuning({ floorFriction: value });
+        setOut(outputs.friction, value.toFixed(3));
+      });
+
+      bindRange(controls.collisions, (value) => {
+        const v = Math.max(1, Math.round(value));
+        engine.setTuning({ collisionPasses: v });
+        setOut(outputs.collisions, String(v));
+      });
+
+      bindRange(controls.spawn, (value) => {
+        engine.setTuning({ spawnRateMax: value });
+        setOut(outputs.spawn, String(Math.round(value)));
+      });
+
+      bindRange(controls.mouseRadius, (value) => {
+        engine.setTuning({ mouseRadius: value });
+        setOut(outputs.mouseRadius, String(Math.round(value)));
+      });
+
+      bindRange(controls.mousePush, (value) => {
+        engine.setTuning({ mousePush: value });
+        setOut(outputs.mousePush, String(Math.round(value)));
+      });
+
+      bindRange(controls.density, (value) => {
+        engine.setTuning({ densityFactor: value });
+        setOut(outputs.density, value.toFixed(1));
+      });
+
+      bindRange(controls.aoIntensity, (value) => {
+        renderer.setAOParams({ intensity: value });
+        setOut(outputs.aoIntensity, value.toFixed(2));
+      });
+
+      bindRange(controls.aoSpread, (value) => {
+        renderer.setAOParams({ spread: value });
+        setOut(outputs.aoSpread, value.toFixed(1));
+      });
+
+      bindRange(controls.aoMin, (value) => {
+        renderer.setAOParams({ minLight: value });
+        setOut(outputs.aoMin, value.toFixed(2));
+      });
+
+      controls.showPerf.addEventListener("change", () => {
+        showPerfOverlay = controls.showPerf.checked;
+        applyPerformanceOverlayVisibility();
+      });
+
+      controls.showFluid.addEventListener("change", () => {
+        showFluidOverlay = controls.showFluid.checked;
+      });
+
+      controls.showSleep.addEventListener("change", () => {
+        showSleepOverlay = controls.showSleep.checked;
+      });
+
+      controls.reset.addEventListener("click", clearPile);
+
+      const pointer = {
+        active: false,
+        prevX: 0,
+        prevY: 0,
+      };
+
+      function onPointerMove(clientX, clientY) {
+        if (!pointer.active) {
+          pointer.prevX = clientX;
+          pointer.prevY = clientY;
+          pointer.active = true;
+        }
+
+        const vx = clientX - pointer.prevX;
+        const vy = clientY - pointer.prevY;
+        pointer.prevX = clientX;
+        pointer.prevY = clientY;
+        engine.setMouse(clientX, clientY, vx, vy, true);
+      }
+
+      canvas.addEventListener(
+        "pointermove",
+        (e) => {
+          onPointerMove(e.clientX, e.clientY);
+        },
+        { passive: true }
+      );
+
+      canvas.addEventListener(
+        "pointerdown",
+        (e) => {
+          onPointerMove(e.clientX, e.clientY);
+        },
+        { passive: true }
+      );
+
+      function clearPointer() {
+        pointer.active = false;
+        engine.clearMouse();
+      }
+
+      canvas.addEventListener("pointerleave", clearPointer, { passive: true });
+      canvas.addEventListener("pointercancel", clearPointer, { passive: true });
+      canvas.addEventListener("pointerup", clearPointer, { passive: true });
+
+      window.addEventListener("resize", resize, { passive: true });
+
+      applyPerformanceOverlayVisibility();
+      syncControls();
+      resize();
+      requestAnimationFrame(frame);
+    })();
+  </script>
+</body>
+</html>

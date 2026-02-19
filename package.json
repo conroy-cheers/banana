@@ -1,0 +1,10 @@
+{
+  "name": "banana-pile",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "build:browser": "node scripts/build-browser-global.js",
+    "test": "node --test",
+    "sim:inspect": "node scripts/sim-inspect.js"
+  }
+}
